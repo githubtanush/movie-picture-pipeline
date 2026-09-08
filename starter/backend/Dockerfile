@@ -2,9 +2,7 @@ FROM python:3.10
 
 WORKDIR /app
 
-RUN useradd -u 1000 app && \
-    mkdir -p /var/www/app && \
-    chown -R app:app /var/www/app
+RUN pip install --no-cache-dir gunicorn flask flask-cors
 
 COPY Pipfile* /app/
 
@@ -14,6 +12,6 @@ RUN pip install --no-cache-dir pipenv && \
 
 COPY . /app/
 
-USER app
+EXPOSE 5000
 
-CMD ["uwsgi", "--http", ":5000", "--master", "--enable-threads", "-s", "/var/www/app/app.sock", "--manage-script-name", "--mount", "/=__init__:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "__init__:app"]
