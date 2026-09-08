@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir pipenv && \
 
 COPY . /app/
 
+ENV PYTHONPATH=/app
+
 USER app
 
 CMD ["uwsgi", "--http", ":5000", "--master", "--enable-threads", "-s", "/var/www/app/app.sock", "--manage-script-name", "--mount", "/=app:app"]
