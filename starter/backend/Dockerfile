@@ -1,23 +1,25 @@
-FROM public.ecr.aws/docker/library/python:3.10-alpine
-ENV FLASK_RUN_HOST=0.0.0.0
+FROM python:3.10-alpine
 
 WORKDIR /
+
 RUN adduser -u 1000 -D app
+
 RUN apk update && \
-  apk add \
-  pcre \
-  pcre-dev \
-  build-base \
-  gcc \
-  linux-headers \
-  openssl \
-  libffi-dev \
-  && pip install pipenv
+    apk add \
+    pcre \
+    pcre-dev \
+    build-base \
+    gcc \
+    linux-headers \
+    openssl \
+    libffi-dev
 
 RUN mkdir -p /var/www/app && mkdir /app
 
 COPY Pipfile* /app
-RUN cd /app && pipenv requirements > requirements.txt && pip install -r requirements.txt
+
+RUN echo -e "Flask==2.2.2\nFlask-Cors==3.0.10\nuWSGI==2.0.21\npytest==7.1.3\nrequests==2.28.1" > /app/requirements.txt && \
+    pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
 
