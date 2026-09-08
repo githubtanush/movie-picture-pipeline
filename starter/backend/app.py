@@ -1,12 +1,12 @@
-import sys
 import os
+import sys
 
 # Backend root directory ko path mein add karein
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flask import Flask
-from flask_cors import CORS
-from movies.movies_api import movies_api
+from flask import Flask  # noqa: E402
+from flask_cors import CORS  # noqa: E402
+from movies.movies_api import movies_api  # noqa: E402
 
 app = Flask(__name__)
 CORS(app)
