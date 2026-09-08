@@ -1,14 +1,10 @@
-FROM python:3.10-bullseye
+FROM python:3.10
 
 WORKDIR /app
 
 RUN useradd -u 1000 app && \
     mkdir -p /var/www/app && \
     chown -R app:app /var/www/app
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc build-essential libpcre3 libpcre3-dev && \
-    rm -rf /var/lib/apt/lists/*
 
 COPY Pipfile* /app/
 
