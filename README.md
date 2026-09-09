@@ -1,65 +1,86 @@
 # Movie Picture Pipeline
 
-An automated continuous integration and continuous deployment (CI/CD) pipeline built with GitHub Actions, Docker, and Kubernetes (AWS EKS) for a microservices-based Movie Picture web application.
+An automated continuous integration and continuous deployment (CI/CD) pipeline built with GitHub Actions, Docker, Amazon ECR, and Kubernetes (AWS EKS) for a microservices-based Movie Picture web application.
 
 ---
 
-## 🌐 Live Microservice URLs
+## 🌐 Live Microservice Endpoints
 
-The application is deployed to an AWS EKS cluster with LoadBalancer services:
+The microservices are continuously deployed to an AWS EKS cluster via AWS Elastic Load Balancers:
 
-* **Frontend Web UI:** [http://a924ebd0312904a1b822a137938daa23-421438864.us-east-1.elb.amazonaws.com](http://a924ebd0312904a1b822a137938daa23-421438864.us-east-1.elb.amazonaws.com)
-* **Backend REST API:** [http://ac5162dc1ec0246df954778921947962-2026922502.us-east-1.elb.amazonaws.com/movies](http://ac5162dc1ec0246df954778921947962-2026922502.us-east-1.elb.amazonaws.com/movies)
-* **GitHub Repository:** [https://github.com/githubtanush/movie-picture-pipeline](https://github.com/githubtanush/movie-picture-pipeline)
+* **Frontend Web Application:** [http://a924ebd0312904a1b822a137938daa23-421438864.us-east-1.elb.amazonaws.com](http://a924ebd0312904a1b822a137938daa23-421438864.us-east-1.elb.amazonaws.com)
+* **Backend REST API (`/movies`):** [http://ac5162dc1ec0246df954778921947962-2026922502.us-east-1.elb.amazonaws.com/movies](http://ac5162dc1ec0246df954778921947962-2026922502.us-east-1.elb.amazonaws.com/movies)
+* **Source Repository:** [https://github.com/githubtanush/movie-picture-pipeline](https://github.com/githubtanush/movie-picture-pipeline)
 
 ---
 
-## 🏗️ Architecture Overview
+## 🏗️ Architecture & Tech Stack
 
-* **Frontend Application (`starter/frontend`):** React 18 & TypeScript Single Page Application served using production-ready Node/Express.
-* **Backend Application (`starter/backend`):** Python 3.10 Flask REST API served using uWSGI with full CORS enablement.
-* **Orchestration & Infrastructure:** Provisioned with Terraform on AWS EKS using Kustomize for continuous deployment.
-* **CI/CD Automation:** GitHub Actions with parallel linting, automated testing, container builds, and zero-downtime rolling updates.
+* **Frontend Application (`starter/frontend`):** React 18 and TypeScript Single Page Application served via a production Node/Express runtime.
+* **Backend REST API (`starter/backend`):** Python 3.10 Flask service served using uWSGI with enabled Cross-Origin Resource Sharing (CORS).
+* **Container Registry:** Amazon Elastic Container Registry (ECR) for backend and frontend Docker images.
+* **Cluster Orchestration:** Amazon Elastic Kubernetes Service (AWS EKS v1.31) provisioned with Terraform, leveraging Kustomize for declarative GitOps updates.
+* **CI/CD Automation:** GitHub Actions workflows executing dependency caching, linting, testing, image packaging, and zero-downtime rolling releases.
 
 ---
 
 ## 🚀 CI/CD Pipeline Implementation
 
-### 1. Frontend Workflows
-* **`frontend-ci.yaml` (Pull Requests & Manual Dispatch):**
-  * **lint:** Runs `npm run lint` with ESLint.
-  * **test:** Executes Jest unit tests in non-interactive mode (`npm test -- --watchAll=false`).
-  * **build:** Runs after `lint` and `test` pass, verifying the production bundle compiles (`npm run build`).
-* **`frontend-cd.yaml` (Push to Main Branch & Manual Dispatch):**
-  * Runs linting, testing, and Docker image builds.
-  * Dynamically injects `REACT_APP_MOVIE_API_URL` via GitHub Repository Secrets through `--build-arg`.
-  * Pushes the image to Amazon ECR tagged with the Git commit SHA and `latest`.
-  * Deploys the container using `kustomize edit set image` and rolls out the update on AWS EKS.
+### 1. Frontend Continuous Integration (`frontend-ci.yaml`)
+Triggered on pull requests targeting `main` and via `workflow_dispatch`:
+* **Lint Job:**
+  * Node.js 18 setup.
+  * **Cache Validation:** Validates and caches `~/.npm` dependencies using `actions/cache@v3` prior to installation.
+  * Dependency installation via `npm ci` followed by ESLint verification (`npm run lint`).
+* **Test Job:**
+  * Node.js 18 setup.
+  * **Cache Validation:** Validates `~/.npm` dependency cache with `actions/cache@v3`.
+  * Executes Jest test suites in non-interactive mode (`npm test -- --watchAll=false`).
+* **Build Job (requires `[lint, test]`):**
+  * Node.js 18 setup.
+  * **Cache Validation:** Validates `~/.npm` dependency cache with `actions/cache@v3`.
+  * Production bundle compilation verified via `npm run build`.
 
-### 2. Backend Workflows
-* **`backend-ci.yaml` (Pull Requests & Manual Dispatch):**
-  * **lint:** Runs `flake8` standards against all Python source files.
-  * **test:** Runs `pytest` test suites verifying JSON structure and HTTP 200 responses.
-* **`backend-cd.yaml` (Push to Main Branch & Manual Dispatch):**
-  * Executes linting and automated testing.
-  * Builds the uWSGI Python container image and pushes it to Amazon ECR.
-  * Dynamically updates the deployment manifest via Kustomize and performs a rolling release to AWS EKS.
+### 2. Backend Continuous Deployment (`backend-cd.yaml`)
+Triggered on push to `main` modifying `starter/backend/**` and via `workflow_dispatch`:
+* Executes Python code standards validation (`flake8`) and test suites (`pytest`) under Pipenv.
+* Authenticates with AWS ECR via `aws-actions/amazon-ecr-login@v1`.
+* Builds, tags, and pushes backend Docker images to Amazon ECR.
+* Updates the Kubernetes deployment image with `kustomize edit set image` and applies the manifest.
+* **Deployment Verification & Logging:**
+  * Performs rollout status verification: `kubectl rollout status deployment/backend --timeout=180s`.
+  * Emits full cluster state: `kubectl get all`.
+  * Emits deployment metadata: `kubectl describe deploy backend`.
+  * Validates ECR image details: `aws ecr describe-images --repository-name backend --image-ids imageTag=latest`.
+
+### 3. Frontend Continuous Deployment (`frontend-cd.yaml`)
+Triggered on push to `main` modifying `starter/frontend/**` and via `workflow_dispatch`:
+* Executes cached dependency installations (`actions/cache@v3`), ESLint checks, and Jest tests.
+* Builds the production Docker image with build-arg injection:
+  `--build-arg REACT_APP_MOVIE_API_URL=${{ secrets.REACT_APP_MOVIE_API_URL }}`
+* Pushes the compiled frontend container image to Amazon ECR.
+* Deploys the service to AWS EKS using Kustomize.
+* **Deployment Verification & Logging:**
+  * Verifies rollout health: `kubectl rollout status deployment/frontend --timeout=180s`.
+  * Emits full cluster state: `kubectl get all`.
+  * Emits deployment metadata: `kubectl describe deploy frontend`.
+  * Validates ECR image details: `aws ecr describe-images --repository-name frontend --image-ids imageTag=latest`.
 
 ---
 
-## 🔐 Required GitHub Repository Secrets
+## 🔐 GitHub Repository Secrets Configuration
 
-Configure these under **Settings > Secrets and variables > Actions**:
+The following repository secrets are configured under **Settings > Secrets and variables > Actions**:
 
-| Secret Name | Description / Example |
+| Secret Name | Value / Description |
 | :--- | :--- |
-| `AWS_ACCESS_KEY_ID` | Temporary or IAM User AWS Access Key |
-| `AWS_SECRET_ACCESS_KEY` | AWS Secret Access Key |
-| `AWS_SESSION_TOKEN` | AWS Session Token (for Learner Lab/Gateway sessions) |
-| `AWS_DEFAULT_REGION` | AWS Deployment Region (e.g., `us-east-1`) |
-| `EKS_CLUSTER_NAME` | Name of the provisioned EKS cluster |
-| `FRONTEND_ECR_REPO` | ECR repository name for the Frontend app |
-| `BACKEND_ECR_REPO` | ECR repository name for the Backend app |
+| `AWS_ACCESS_KEY_ID` | AWS IAM Access Key ID |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM Secret Access Key |
+| `AWS_SESSION_TOKEN` | AWS STS Session Token (for Learner Lab sessions) |
+| `AWS_DEFAULT_REGION` | `us-east-1` |
+| `EKS_CLUSTER_NAME` | `cluster` |
+| `BACKEND_ECR_REPO` | `backend` |
+| `FRONTEND_ECR_REPO` | `frontend` |
 | `REACT_APP_MOVIE_API_URL` | `http://ac5162dc1ec0246df954778921947962-2026922502.us-east-1.elb.amazonaws.com` |
 
 ---
@@ -73,29 +94,12 @@ cd starter/frontend
 # Install dependencies
 npm ci
 
-# Run linter and tests
+# Run linter & test suite
 npm run lint
 npm test -- --watchAll=false
 
-# Start development server
+# Build production bundle
+npm run build
+
+# Start local server
 REACT_APP_MOVIE_API_URL=http://localhost:5000 npm start
-cd starter/backend
-
-# Install dependencies
-pipenv install
-
-# Run linter and unit tests
-pipenv run lint
-pipenv run test
-
-# Run application locally
-pipenv run serve
-kubectl get pods -l app=backend
-kubectl get pods -l app=frontend
-kubectl get svc
-curl -i [http://ac5162dc1ec0246df954778921947962-2026922502.us-east-1.elb.amazonaws.com/movies](http://ac5162dc1ec0246df954778921947962-2026922502.us-east-1.elb.amazonaws.com/movies)
-HTTP/1.1 200 OK
-Content-Type: application/json
-Access-Control-Allow-Origin: *
-
-{"movies":[{"id":"123","title":"Top Gun: Maverick"},{"id":"456","title":"Sonic the Hedgehog"},{"id":"789","title":"A Quiet Place"}]}
